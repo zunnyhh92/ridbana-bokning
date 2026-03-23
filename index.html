@@ -858,7 +858,7 @@
     </div>
 
     <div class="header">
-        <h1>Ridbana Bokning</h1>
+        <h1 id="headerTitle">Ridbana Bokning</h1>
         <p id="trackDescription">Boka vår ridbana enkelt och smidigt</p>
     </div>
 
@@ -1174,6 +1174,16 @@
 
             <!-- Setup Tab -->
             <div id="setupTab" class="admin-section">
+                <div class="settings-card" style="background: var(--cream); border-left: 4px solid var(--sage-green);">
+                    <h3>📊 Konfigurationsstatus</h3>
+                    <div id="configStatus">
+                        <p><strong>Gist ID:</strong> <span id="statusGistId">-</span></p>
+                        <p><strong>Token:</strong> <span id="statusToken">-</span></p>
+                        <p><strong>Admin PIN:</strong> <span id="statusPin">-</span></p>
+                        <button class="submit-btn" style="margin-top: 1rem;" onclick="checkConfigStatus()">Uppdatera status</button>
+                    </div>
+                </div>
+
                 <div class="settings-card">
                     <h3>GitHub Gist Konfiguration</h3>
                     <p style="margin-bottom: 1rem; opacity: 0.8;">
@@ -1196,6 +1206,7 @@
                         <label>GitHub Personal Access Token:</label>
                         <input type="password" id="githubToken" placeholder="ghp_...">
                     </div>
+                    <button class="submit-btn" onclick="testGistConnection()">Test anslutning</button>
                     <button class="submit-btn" onclick="saveGistConfig()">Spara & Initiera</button>
                 </div>
 
@@ -1579,13 +1590,24 @@
                 createdAt: new Date().toISOString()
             };
 
+            console.log('Creating booking:', booking);
+
             appData.bookings.push(booking);
-            await saveData();
-
-            // Send confirmation email
-            await sendConfirmationEmail(booking);
-
-            showConfirmation(booking);
+            
+            try {
+                await saveData();
+                console.log('Booking saved successfully');
+                
+                // Send confirmation email
+                await sendConfirmationEmail(booking);
+                
+                showConfirmation(booking);
+            } catch (error) {
+                console.error('Error saving booking:', error);
+                // Remove the booking if save failed
+                appData.bookings.pop();
+                alert('Bokningsfel!\n\nBokningen kunde inte sparas till GitHub.\n\nKontrollera att du har konfigurerat GitHub Gist korrekt i Admin-panelen.');
+            }
         }
 
         async function sendConfirmationEmail(booking) {
@@ -1745,6 +1767,7 @@
             renderBlockedDatesList();
             renderPriceOverridesList();
             renderScheduleOverridesList();
+            checkConfigStatus();
         }
 
         function updatePageTitle() {
@@ -1752,6 +1775,11 @@
         }
 
         function updateFooter() {
+            // Update header
+            document.getElementById('headerTitle').textContent = appData.settings.trackName || 'Ridbana Bokning';
+            document.getElementById('trackDescription').textContent = appData.settings.description || 'Boka vår ridbana enkelt och smidigt';
+            
+            // Update footer
             document.getElementById('footerTrackName').textContent = appData.settings.trackName || 'Ridbana Bokning';
             
             const emailEl = document.getElementById('footerEmail');
@@ -1794,7 +1822,6 @@
             document.getElementById('hourlyPrice').value = appData.settings.pricing.hourly;
             document.getElementById('monthlyPrice').value = appData.settings.pricing.monthly;
             document.getElementById('monthlyDescription').value = appData.settings.pricing.monthlyDescription;
-            document.getElementById('trackDescription').textContent = appData.settings.description;
             
             // Payment instructions
             if (appData.settings.paymentInstructions) {
@@ -2153,6 +2180,88 @@
             };
         }
 
+        function checkConfigStatus() {
+            const statusGistId = document.getElementById('statusGistId');
+            const statusToken = document.getElementById('statusToken');
+            const statusPin = document.getElementById('statusPin');
+
+            // Check Gist ID
+            if (gistConfig.id) {
+                statusGistId.innerHTML = `✅ ${gistConfig.id.substring(0, 8)}...`;
+                statusGistId.style.color = 'green';
+            } else {
+                statusGistId.innerHTML = '❌ Ej konfigurerad';
+                statusGistId.style.color = 'red';
+            }
+
+            // Check Token
+            if (gistConfig.token) {
+                statusToken.innerHTML = `✅ ghp_${gistConfig.token.substring(4, 8)}...`;
+                statusToken.style.color = 'green';
+            } else {
+                statusToken.innerHTML = '❌ Ej konfigurerad';
+                statusToken.style.color = 'red';
+            }
+
+            // Check Admin PIN
+            if (adminPin) {
+                statusPin.innerHTML = '✅ Konfigurerad (****)'
+                statusPin.style.color = 'green';
+            } else {
+                statusPin.innerHTML = '❌ Ej konfigurerad';
+                statusPin.style.color = 'red';
+            }
+        }
+
+        async function testGistConnection() {
+            const gistId = document.getElementById('gistId').value;
+            const token = document.getElementById('githubToken').value;
+
+            if (!gistId || !token) {
+                alert('Vänligen fyll i både Gist ID och Token först');
+                return;
+            }
+
+            try {
+                const response = await fetch(`https://api.github.com/gists/${gistId}`, {
+                    headers: {
+                        'Authorization': `token ${token}`
+                    }
+                });
+
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    console.error('GitHub API error:', errorData);
+                    
+                    if (response.status === 401) {
+                        alert('❌ Token är ogiltig eller har inte "gist" scope.\n\nÅtgärda:\n1. Gå till GitHub Settings → Developer settings → Personal access tokens\n2. Generera ny token med "gist" scope\n3. Klistra in den nya token här');
+                    } else if (response.status === 404) {
+                        alert('❌ Gist hittades inte.\n\nKontrollera:\n1. Gist ID är korrekt (från URL:en)\n2. Gist existerar på ditt GitHub-konto\n3. Gist är inte raderad');
+                    } else {
+                        alert(`❌ GitHub API fel: ${response.status}\n\n${errorData.message || 'Okänt fel'}`);
+                    }
+                    return;
+                }
+
+                const gist = await response.json();
+                
+                // Check if booking-data.json exists
+                if (!gist.files['booking-data.json']) {
+                    alert('⚠️ Anslutningen fungerar, men filen "booking-data.json" saknas i Gist.\n\nÅtgärda:\n1. Öppna din Gist på GitHub\n2. Lägg till en fil: booking-data.json\n3. Innehåll: {}\n4. Spara');
+                    return;
+                }
+
+                alert('✅ Anslutningen fungerar!\n\n' + 
+                      `Gist: ${gist.description || 'Ingen beskrivning'}\n` +
+                      `Skapad: ${new Date(gist.created_at).toLocaleDateString('sv-SE')}\n` +
+                      `Status: ${gist.public ? 'Publik (⚠️ bör vara Secret)' : 'Secret (✓)'}`);
+                
+            } catch (error) {
+                console.error('Connection test error:', error);
+                alert('❌ Anslutningsfel:\n\n' + error.message + '\n\nKontrollera din internetanslutning.');
+            }
+        }
+
         function saveGistConfig() {
             const gistId = document.getElementById('gistId').value;
             const token = document.getElementById('githubToken').value;
@@ -2168,9 +2277,11 @@
             gistConfig.id = gistId;
             gistConfig.token = token;
 
+            alert('✅ GitHub Gist konfiguration sparad!\n\nTips: Klicka "Test anslutning" för att verifiera att allt fungerar.');
+            
+            // Initialize data
             saveData().then(() => {
-                alert('GitHub Gist konfiguration sparad! Applikationen är nu redo att användas.');
-                location.reload();
+                console.log('Initial save complete');
             });
         }
 
@@ -2253,16 +2364,19 @@
                     }
                 });
 
-                if (!response.ok) throw new Error('Failed to load data');
+                if (!response.ok) {
+                    console.error('GitHub API error:', response.status);
+                    throw new Error(`GitHub API error: ${response.status}`);
+                }
 
                 const gist = await response.json();
-                const content = gist.files['booking-data.json'].content;
+                const content = gist.files['booking-data.json']?.content;
                 
                 if (content && content !== '{}') {
                     const data = JSON.parse(content);
                     
                     // Store settings
-                    appData.settings = data.settings;
+                    appData.settings = data.settings || appData.settings;
                     
                     // Create anonymous booking slots (no personal info)
                     const bookingSlots = data.bookings ? data.bookings.map(b => ({
@@ -2275,12 +2389,16 @@
                     
                     // Cache public data
                     localStorage.setItem('publicCache', JSON.stringify({
-                        settings: data.settings,
+                        settings: appData.settings,
                         bookingSlots: bookingSlots
                     }));
                     localStorage.setItem('publicCacheTime', Date.now().toString());
                     
                     showCacheStatus('fresh', 'Data uppdaterad');
+                    console.log('Public data loaded:', appData);
+                } else {
+                    console.log('Gist is empty or only contains {}');
+                    showCacheStatus('fresh', 'Tom databas');
                 }
             } catch (error) {
                 console.error('Error loading public data:', error);
@@ -2335,7 +2453,13 @@
         }
 
         async function saveData() {
-            if (!gistConfig.id || !gistConfig.token) return;
+            if (!gistConfig.id || !gistConfig.token) {
+                console.error('Gist not configured!');
+                alert('GitHub Gist är inte konfigurerad. Gå till Admin → Initial Konfiguration först.');
+                return;
+            }
+
+            console.log('Saving data to Gist...', gistConfig.id);
 
             try {
                 const response = await fetch(`https://api.github.com/gists/${gistConfig.id}`, {
@@ -2353,7 +2477,13 @@
                     })
                 });
 
-                if (!response.ok) throw new Error('Failed to save data');
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    console.error('GitHub API error:', response.status, errorText);
+                    throw new Error(`GitHub API error: ${response.status}`);
+                }
+                
+                console.log('Data saved successfully!');
                 
                 // Clear public cache when admin makes changes
                 localStorage.removeItem('publicCache');
@@ -2361,7 +2491,7 @@
                 
             } catch (error) {
                 console.error('Error saving data:', error);
-                alert('Fel vid sparande av data. Kontrollera din GitHub-konfiguration.');
+                alert('Fel vid sparande till GitHub!\n\nKontrollera:\n1. Gist ID är korrekt\n2. Token har "gist" scope\n3. Token är inte utgången\n\nFel: ' + error.message);
             }
         }
         
