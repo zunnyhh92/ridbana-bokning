@@ -1181,6 +1181,7 @@
                         <p><strong>Token:</strong> <span id="statusToken">-</span></p>
                         <p><strong>Admin PIN:</strong> <span id="statusPin">-</span></p>
                         <button class="submit-btn" style="margin-top: 1rem;" onclick="checkConfigStatus()">Uppdatera status</button>
+                        <button class="submit-btn" style="margin-top: 0.5rem; background: var(--earth-brown);" onclick="viewGistData()">Visa data från Gist (Debug)</button>
                     </div>
                 </div>
 
@@ -1484,6 +1485,11 @@
                 }
             }
 
+            const dateStr = formatDate(date);
+            const bookedCount = slots.filter(s => s.booked).length;
+            const availableCount = slots.filter(s => !s.booked).length;
+            console.log(`Date ${dateStr}: ${bookedCount} booked, ${availableCount} available. Total bookings in system: ${appData.bookings.length}`);
+
             return slots;
         }
 
@@ -1695,7 +1701,13 @@
 
         function closeConfirmation() {
             document.getElementById('confirmationModal').classList.remove('active');
-            location.reload();
+            
+            // Reload data to update calendar with new booking
+            console.log('Reloading data after booking...');
+            loadData().then(() => {
+                console.log('Data reloaded, bookings count:', appData.bookings.length);
+                renderCalendar();
+            });
         }
 
         // Admin functions
@@ -2180,6 +2192,52 @@
             };
         }
 
+        async function viewGistData() {
+            if (!gistConfig.id || !gistConfig.token) {
+                alert('Gist är inte konfigurerad ännu!');
+                return;
+            }
+
+            try {
+                const response = await fetch(`https://api.github.com/gists/${gistConfig.id}`, {
+                    headers: {
+                        'Authorization': `token ${gistConfig.token}`
+                    }
+                });
+
+                if (!response.ok) {
+                    alert(`Fel vid hämtning: ${response.status}`);
+                    return;
+                }
+
+                const gist = await response.json();
+                const content = gist.files['booking-data.json']?.content;
+                
+                if (!content) {
+                    alert('⚠️ Ingen data hittades i Gist!');
+                    return;
+                }
+
+                const data = JSON.parse(content);
+                const bookingCount = data.bookings ? data.bookings.length : 0;
+                
+                alert(`📊 DATA I GIST:\n\n` +
+                      `Antal bokningar: ${bookingCount}\n` +
+                      `Track name: ${data.settings?.trackName || 'Ej satt'}\n\n` +
+                      `Öppna Browser Console (F12) för att se full data.`);
+                
+                console.log('=== FULL GIST DATA ===');
+                console.log('Bookings:', data.bookings);
+                console.log('Settings:', data.settings);
+                console.log('Raw JSON:', content);
+                console.log('======================');
+                
+            } catch (error) {
+                console.error('Error:', error);
+                alert('Fel: ' + error.message);
+            }
+        }
+
         function checkConfigStatus() {
             const statusGistId = document.getElementById('statusGistId');
             const statusToken = document.getElementById('statusToken');
@@ -2396,6 +2454,7 @@
                     
                     showCacheStatus('fresh', 'Data uppdaterad');
                     console.log('Public data loaded:', appData);
+                    console.log('Total bookings loaded:', appData.bookings.length);
                 } else {
                     console.log('Gist is empty or only contains {}');
                     showCacheStatus('fresh', 'Tom databas');
