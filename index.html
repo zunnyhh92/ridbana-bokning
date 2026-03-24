@@ -1729,13 +1729,25 @@
 
         // Admin functions
         function toggleAdminPanel() {
+            // Check if this is the owner's device (has gistConfig in localStorage)
+            const ownerDevice = localStorage.getItem('gistId') && localStorage.getItem('githubToken');
+            
+            // If no Gist is configured in localStorage at all
+            if (!ownerDevice) {
+                alert('⚠️ Åtkomst Nekad\n\nDenna sida är inte konfigurerad än, eller så använder du en enhet som inte är godkänd.\n\nOm du är ägare:\nKonfigurera först på din huvudenhet, sedan fungerar admin-åtkomst på alla enheter med PIN-kod.\n\nOm du är besökare:\nDu har inte tillgång till admin-panelen.');
+                return;
+            }
+            
+            // Owner's device - check if PIN is configured
             if (!adminPin) {
-                alert('Admin PIN är inte konfigurerad. Gå till "Initial Konfiguration" först.');
+                // First-time setup: Allow owner to configure PIN
+                alert('🔧 Första Gången Setup\n\nAdmin PIN är inte konfigurerad.\n\nDu kommer nu till Initial Konfiguration där du kan ställa in din PIN-kod.\n\nEfter det krävs PIN för all admin-åtkomst.');
                 document.getElementById('adminPanel').classList.add('active');
                 switchAdminTab('setup');
                 return;
             }
 
+            // PIN exists, require verification
             document.getElementById('pinModal').classList.add('active');
         }
 
@@ -2340,7 +2352,7 @@
             }
         }
 
-        function saveGistConfig() {
+        async function saveGistConfig() {
             const gistId = document.getElementById('gistId').value;
             const token = document.getElementById('githubToken').value;
 
@@ -2357,10 +2369,13 @@
 
             alert('✅ GitHub Gist konfiguration sparad!\n\nTips: Klicka "Test anslutning" för att verifiera att allt fungerar.');
             
-            // Initialize data
-            saveData().then(() => {
-                console.log('Initial save complete');
-            });
+            // Initialize data and load PIN if it exists
+            try {
+                await loadData();
+                checkConfigStatus();
+            } catch (error) {
+                console.error('Error loading initial data:', error);
+            }
         }
 
         async function saveAdminPin() {
