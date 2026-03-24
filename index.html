@@ -1187,11 +1187,18 @@
 
                 <div class="settings-card">
                     <h3>GitHub Gist Konfiguration</h3>
+                    <div style="background: #f8d7da; padding: 1rem; border-radius: 8px; margin-bottom: 1rem; border-left: 4px solid #dc3545;">
+                        <p style="margin: 0; font-size: 0.9rem; color: #721c24;">
+                            🔒 <strong>VIKTIGT - SÄKERHET:</strong> Din Gist <strong>MÅSTE</strong> vara SECRET (inte Public)! 
+                            Den innehåller kunddata och admin PIN-kod. Dela ALDRIG Gist-länken publikt.
+                        </p>
+                    </div>
                     <p style="margin-bottom: 1rem; opacity: 0.8;">
                         För att lagra bokningar och inställningar behöver du skapa ett GitHub Gist.
                     </p>
                     <ol style="margin-bottom: 1.5rem; line-height: 1.8;">
                         <li>Gå till <a href="https://gist.github.com/" target="_blank">gist.github.com</a></li>
+                        <li><strong>Viktigt:</strong> Välj "Create secret gist" (INTE public!)</li>
                         <li>Skapa ett nytt gist med filnamnet <code>booking-data.json</code></li>
                         <li>Innehåll: <code>{}</code></li>
                         <li>Kopiera Gist ID från URL:en (efter gist.github.com/username/)</li>
@@ -1216,6 +1223,12 @@
                     <p style="margin-bottom: 1rem; opacity: 0.8;">
                         Skapa en PIN-kod för att skydda administratörspanelen.
                     </p>
+                    <div style="background: #fff3cd; padding: 1rem; border-radius: 8px; margin-bottom: 1rem; border-left: 4px solid #ffc107;">
+                        <p style="margin: 0; font-size: 0.9rem;">
+                            ⚠️ <strong>Viktigt:</strong> PIN-koden lagras i GitHub Gist och fungerar på alla enheter. 
+                            Dela ALDRIG din Gist-länk publikt då den innehåller din PIN.
+                        </p>
+                    </div>
                     <div class="form-group">
                         <label>Ny PIN-kod (4 siffror):</label>
                         <input type="password" id="newAdminPin" placeholder="1234" maxlength="4" pattern="[0-9]{4}">
@@ -1286,6 +1299,7 @@
                 description: "Boka vår ridbana enkelt och smidigt",
                 contactEmail: "",
                 contactPhone: "",
+                adminPin: "", // Stored in Gist for security
                 emailjs: {
                     serviceId: "",
                     templateId: "",
@@ -1316,12 +1330,15 @@
             token: localStorage.getItem('githubToken') || ''
         };
 
-        let adminPin = localStorage.getItem('adminPin') || '';
+        // PIN is now stored in Gist, not localStorage
+        let adminPin = '';
 
         // Initialize
         document.addEventListener('DOMContentLoaded', async () => {
             if (gistConfig.id && gistConfig.token) {
                 await loadData();
+                // Load admin PIN from settings
+                adminPin = appData.settings.adminPin || '';
             }
             renderCalendar();
             updateSettingsUI();
@@ -2262,7 +2279,7 @@
             }
 
             // Check Admin PIN
-            if (adminPin) {
+            if (appData.settings.adminPin) {
                 statusPin.innerHTML = '✅ Konfigurerad (****)'
                 statusPin.style.color = 'green';
             } else {
@@ -2312,8 +2329,11 @@
                 alert('✅ Anslutningen fungerar!\n\n' + 
                       `Gist: ${gist.description || 'Ingen beskrivning'}\n` +
                       `Skapad: ${new Date(gist.created_at).toLocaleDateString('sv-SE')}\n` +
-                      `Status: ${gist.public ? 'Publik (⚠️ bör vara Secret)' : 'Secret (✓)'}`);
+                      `Status: ${gist.public ? '⚠️ PUBLIC - BÖR VARA SECRET!' : '✅ Secret (Säker)'}`);
                 
+                if (gist.public) {
+                    alert('🔒 SÄKERHETSVARNING!\n\nDin Gist är PUBLIC vilket betyder att ALLA kan se:\n• Kundinformation\n• Admin PIN-kod\n• Bokningsdetaljer\n\nÅTGÄRD:\n1. Gå till din Gist på GitHub\n2. Klicka "Delete gist"\n3. Skapa en NY gist och välj "Create SECRET gist"\n4. Uppdatera Gist ID här');
+                }
             } catch (error) {
                 console.error('Connection test error:', error);
                 alert('❌ Anslutningsfel:\n\n' + error.message + '\n\nKontrollera din internetanslutning.');
@@ -2343,7 +2363,7 @@
             });
         }
 
-        function saveAdminPin() {
+        async function saveAdminPin() {
             const pin = document.getElementById('newAdminPin').value;
             
             if (!/^\d{4}$/.test(pin)) {
@@ -2351,9 +2371,15 @@
                 return;
             }
 
-            localStorage.setItem('adminPin', pin);
+            // Save PIN to Gist settings
+            appData.settings.adminPin = pin;
             adminPin = pin;
-            alert('Admin PIN sparad!');
+            
+            await saveData();
+            
+            alert('✅ Admin PIN sparad!\n\nPIN är nu skyddad i GitHub Gist och fungerar på alla enheter.');
+            document.getElementById('newAdminPin').value = '';
+            checkConfigStatus();
         }
 
         // Data persistence with privacy-aware caching
@@ -2436,6 +2462,9 @@
                     // Store settings
                     appData.settings = data.settings || appData.settings;
                     
+                    // Load admin PIN from settings
+                    adminPin = appData.settings.adminPin || '';
+                    
                     // Create anonymous booking slots (no personal info)
                     const bookingSlots = data.bookings ? data.bookings.map(b => ({
                         date: b.date,
@@ -2495,6 +2524,8 @@
                 if (content && content !== '{}') {
                     const data = JSON.parse(content);
                     appData = { ...appData, ...data };
+                    // Update adminPin from settings
+                    adminPin = appData.settings.adminPin || '';
                 }
                 
                 isAdminMode = true;
