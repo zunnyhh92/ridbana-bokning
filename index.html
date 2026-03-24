@@ -1734,7 +1734,15 @@
             
             // If no Gist is configured in localStorage at all
             if (!ownerDevice) {
-                alert('⚠️ Åtkomst Nekad\n\nDenna sida är inte konfigurerad än, eller så använder du en enhet som inte är godkänd.\n\nOm du är ägare:\nKonfigurera först på din huvudenhet, sedan fungerar admin-åtkomst på alla enheter med PIN-kod.\n\nOm du är besökare:\nDu har inte tillgång till admin-panelen.');
+                alert('⚠️ Åtkomst Nekad\n\n' +
+                      'Denna enhet har inte admin-behörighet.\n\n' +
+                      '📱 För ägare - få åtkomst på denna enhet:\n' +
+                      '1. Gå till Admin → Initial Konfiguration\n' +
+                      '2. Ange ditt Gist ID och Token\n' +
+                      '3. Därefter kan du logga in med PIN-kod\n\n' +
+                      '👤 För besökare:\n' +
+                      'Du har inte tillgång till admin-panelen.\n\n' +
+                      'ℹ️ Inkognitoläge/privat surfning kan aldrig få admin-åtkomst.');
                 return;
             }
             
